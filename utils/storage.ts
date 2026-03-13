@@ -1,0 +1,102 @@
+import { APP_DEFAULTS } from '@/constants/Config';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
+
+// @ts-ignore
+const CONFIG_FILE = (FileSystem.documentDirectory || '') + 'app_config.json';
+const WEB_STORAGE_KEY = 'anomali_app_config';
+
+export interface AppConfig {
+    username: string;
+    city?: string;
+    isSetupComplete: boolean;
+    mqttTopic?: string;
+    mqttHost?: string;
+    mqttPort?: string;
+    deviceSettings?: Record<string, { name: string; iconType: string; customIconUri?: string }>;
+}
+
+export const DEFAULT_CONFIG: AppConfig = {
+    ...APP_DEFAULTS,
+    isSetupComplete: false,
+    deviceSettings: {},
+};
+
+export const Storage = {
+    async saveConfig(config: AppConfig): Promise<void> {
+        if (Platform.OS === 'web') {
+            try {
+                localStorage.setItem(WEB_STORAGE_KEY, JSON.stringify(config));
+            } catch (error) {
+                console.error('Error saving config to localStorage:', error);
+            }
+            return;
+        }
+
+        try {
+            const json = JSON.stringify(config);
+            await FileSystem.writeAsStringAsync(CONFIG_FILE, json);
+        } catch (error) {
+            console.error('Error saving config:', error);
+        }
+    },
+
+    async loadConfig(): Promise<AppConfig | null> {
+        if (Platform.OS === 'web') {
+            try {
+                const json = localStorage.getItem(WEB_STORAGE_KEY);
+                const saved = json ? JSON.parse(json) : {};
+                return { ...DEFAULT_CONFIG, ...saved };
+            } catch (error) {
+                console.error('Error loading config from localStorage:', error);
+                return null;
+            }
+        }
+
+        try {
+            const info = await FileSystem.getInfoAsync(CONFIG_FILE);
+            if (info.exists) {
+                const json = await FileSystem.readAsStringAsync(CONFIG_FILE);
+                const saved = JSON.parse(json);
+                return { ...DEFAULT_CONFIG, ...saved };
+            }
+        } catch (error) {
+            console.error('Error loading config:', error);
+        }
+        return DEFAULT_CONFIG;
+    },
+
+    async isSetupComplete(): Promise<boolean> {
+        const config = await this.loadConfig();
+        return !!config?.isSetupComplete;
+    },
+
+    async clearConfig(): Promise<void> {
+        if (Platform.OS === 'web') {
+            localStorage.removeItem(WEB_STORAGE_KEY);
+            return;
+        }
+
+        try {
+            await FileSystem.deleteAsync(CONFIG_FILE, { idempotent: true });
+        } catch (error) {
+            console.error('Error clearing config:', error);
+        }
+    },
+
+    async saveDeviceSettings(deviceId: string, settings: { name: string; iconType: string; customIconUri?: string }): Promise<void> {
+        const config = await this.loadConfig();
+        if (!config) return;
+
+        const updatedConfig = {
+            ...config,
+            deviceSettings: {
+                ...(config.deviceSettings || {}),
+                [deviceId]: settings,
+            },
+        };
+        await this.saveConfig(updatedConfig);
+    }
+};
+
+

@@ -1,0 +1,485 @@
+import { SmartHomeColors } from '@/constants/theme';
+import { TXT } from '@/constants/translations';
+import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
+import React, { useState } from 'react';
+import {
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+export interface Schedule {
+    id: string;
+    startTime: string; // HH:mm
+    endTime: string;   // HH:mm
+    isEnabled: boolean;
+    name?: string;
+}
+
+interface ScheduleModalProps {
+    visible: boolean;
+    onClose: () => void;
+    deviceName: string;
+    schedules: Schedule[];
+    onUpdateSchedules: (schedules: Schedule[]) => void;
+}
+
+export function ScheduleModal({
+    visible,
+    onClose,
+    deviceName,
+    schedules,
+    onUpdateSchedules,
+}: ScheduleModalProps) {
+    const insets = useSafeAreaInsets();
+    const [name, setName] = useState('');
+    const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+    const [startDateTime, setStartDateTime] = useState(new Date());
+    const [endDateTime, setEndDateTime] = useState(new Date());
+    const [showStartPicker, setShowStartPicker] = useState(false);
+    const [showEndPicker, setShowEndPicker] = useState(false);
+
+    const formatTime = (date: Date) => {
+        return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    };
+
+    const onStartChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+        setShowStartPicker(false);
+        if (selectedDate) {
+            setStartDateTime(selectedDate);
+        }
+    };
+
+    const onEndChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+        setShowEndPicker(false);
+        if (selectedDate) {
+            setEndDateTime(selectedDate);
+        }
+    };
+
+    const addSchedule = () => {
+        const timeStr = (d: Date) => `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
+        if (editingScheduleId) {
+            onUpdateSchedules(
+                schedules.map((s) =>
+                    s.id === editingScheduleId
+                        ? { ...s, name: name.trim() || undefined, startTime: timeStr(startDateTime), endTime: timeStr(endDateTime) }
+                        : s
+                )
+            );
+            setEditingScheduleId(null);
+        } else {
+            const newSched: Schedule = {
+                id: Math.random().toString(36).substr(2, 9),
+                name: name.trim() || undefined,
+                startTime: timeStr(startDateTime),
+                endTime: timeStr(endDateTime),
+                isEnabled: true,
+            };
+            onUpdateSchedules([...schedules, newSched]);
+        }
+        setName('');
+    };
+
+    const startEditing = (s: Schedule) => {
+        setEditingScheduleId(s.id);
+        setName(s.name || '');
+        const d1 = new Date();
+        const [h1, m1] = s.startTime.split(':');
+        d1.setHours(parseInt(h1), parseInt(m1));
+        setStartDateTime(d1);
+
+        const d2 = new Date();
+        const [h2, m2] = s.endTime.split(':');
+        d2.setHours(parseInt(h2), parseInt(m2));
+        setEndDateTime(d2);
+    };
+
+    const cancelEditing = () => {
+        setEditingScheduleId(null);
+        setName('');
+    };
+
+    const removeSchedule = (id: string) => {
+        onUpdateSchedules(schedules.filter((s) => s.id !== id));
+    };
+
+    const toggleSchedule = (id: string) => {
+        onUpdateSchedules(
+            schedules.map((s) =>
+                s.id === id ? { ...s, isEnabled: !s.isEnabled } : s
+            )
+        );
+    };
+
+    return (
+        <Modal
+            visible={visible}
+            animationType="fade"
+            transparent={true}
+            statusBarTranslucent={true}
+            onRequestClose={onClose}
+        >
+            <BlurView intensity={20} tint="dark" style={styles.modalOverlay}>
+                <View style={[styles.modalContainer, { paddingTop: insets.top + 8, paddingBottom: insets.bottom }]}>
+                    <View style={styles.header}>
+                        <TouchableOpacity onPress={onClose} style={styles.headerBackBtn}>
+                            <Ionicons name="chevron-back" size={28} color={SmartHomeColors.textPrimary} />
+                        </TouchableOpacity>
+                        <View style={styles.headerTitleContainer}>
+                            <Text style={styles.title} numberOfLines={1}>{deviceName}</Text>
+                        </View>
+                        <View style={{ width: 40 }} />
+                    </View>
+
+                    <ScrollView style={styles.list}>
+                        {schedules.length === 0 ? (
+                            <Text style={styles.emptyText}>{TXT.device.noSchedules}</Text>
+                        ) : (
+                            schedules.map((s) => (
+                                <TouchableOpacity
+                                    key={s.id}
+                                    style={[styles.item, !s.isEnabled && styles.itemDisabled]}
+                                    onPress={() => startEditing(s)}
+                                >
+                                    <View style={styles.itemInfo}>
+                                        <Text style={styles.itemName}>{s.name || TXT.device.schedules}</Text>
+                                        <View style={styles.timeRow}>
+                                            <Text style={styles.itemTime}>{s.startTime}</Text>
+                                            <View style={styles.timeDivider} />
+                                            <Text style={styles.itemTime}>{s.endTime}</Text>
+                                        </View>
+                                        <View style={[styles.statusTag, s.isEnabled ? styles.statusTagActive : styles.statusTagInactive]}>
+                                            <View style={[styles.statusTagDot, { backgroundColor: s.isEnabled ? '#10B981' : SmartHomeColors.textMuted }]} />
+                                            <Text style={[styles.statusTagText, { color: s.isEnabled ? '#10B981' : SmartHomeColors.textMuted }]}>
+                                                {s.isEnabled ? TXT.device.enabled : TXT.common.off}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <View style={styles.itemActions}>
+                                        <Switch
+                                            value={s.isEnabled}
+                                            onValueChange={() => toggleSchedule(s.id)}
+                                            trackColor={{ false: '#CBD5E1', true: '#8B5CF688' }}
+                                            thumbColor={s.isEnabled ? SmartHomeColors.purple : '#F1F5F9'}
+                                            ios_backgroundColor="#CBD5E1"
+                                        />
+                                        <TouchableOpacity onPress={() => removeSchedule(s.id)} style={styles.deleteBtn}>
+                                            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                                        </TouchableOpacity>
+                                    </View>
+                                </TouchableOpacity>
+                            ))
+                        )}
+                    </ScrollView>
+
+                    <View style={styles.addForm}>
+                        <View style={styles.addHeader}>
+                            <Text style={styles.addTitle}>{editingScheduleId ? TXT.device.editDevice : TXT.device.addSchedule}</Text>
+                            {editingScheduleId && (
+                                <TouchableOpacity onPress={cancelEditing}>
+                                    <Text style={styles.cancelLink}>{TXT.common.cancel}</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.fieldLabelSmall}>{TXT.device.scheduleName}</Text>
+                            <TextInput
+                                style={styles.nameInput}
+                                value={name}
+                                onChangeText={setName}
+                                placeholder="e.g. Lampu Pagi"
+                                placeholderTextColor={SmartHomeColors.textMuted}
+                            />
+                        </View>
+
+                        <View style={styles.fieldLabelRow}>
+                            <Text style={styles.fieldLabel}>{TXT.device.startTime}</Text>
+                            <Text style={styles.fieldLabel}>{TXT.device.endTime}</Text>
+                        </View>
+                        <View style={styles.inputRow}>
+                            <TouchableOpacity
+                                style={styles.timePickerBtn}
+                                onPress={() => setShowStartPicker(true)}
+                            >
+                                <Text style={styles.timePickerText}>{formatTime(startDateTime)}</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.timePickerBtn}
+                                onPress={() => setShowEndPicker(true)}
+                            >
+                                <Text style={styles.timePickerText}>{formatTime(endDateTime)}</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity onPress={addSchedule} style={[styles.addBtnFull, editingScheduleId && styles.saveBtnEdit]}>
+                            <Ionicons name={editingScheduleId ? "checkmark" : "add"} size={24} color="#FFF" />
+                            <Text style={styles.addBtnText}>{editingScheduleId ? TXT.common.save : TXT.device.addSchedule}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </BlurView>
+
+            {showStartPicker && (
+                <DateTimePicker
+                    value={startDateTime}
+                    mode="time"
+                    is24Hour={true}
+                    display="default"
+                    onChange={onStartChange}
+                />
+            )}
+
+            {showEndPicker && (
+                <DateTimePicker
+                    value={endDateTime}
+                    mode="time"
+                    is24Hour={true}
+                    display="default"
+                    onChange={onEndChange}
+                />
+            )}
+        </Modal>
+    );
+}
+
+const styles = StyleSheet.create({
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    modalContainer: {
+        backgroundColor: SmartHomeColors.cardBg,
+        padding: 24,
+        flex: 1,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+        position: 'relative',
+        height: 48,
+    },
+    headerBackBtn: {
+        padding: 4,
+        marginLeft: -4,
+        zIndex: 10,
+    },
+    headerTitleContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    title: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: SmartHomeColors.textPrimary,
+        letterSpacing: -0.5,
+    },
+    list: {
+        marginBottom: 20,
+        paddingBottom: 20,
+    },
+    emptyText: {
+        textAlign: 'center',
+        color: SmartHomeColors.textMuted,
+        marginVertical: 40,
+        fontSize: 16,
+    },
+    item: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#FFF',
+        padding: 16,
+        borderRadius: 20,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    itemDisabled: {
+        backgroundColor: '#F8F9FF',
+        borderColor: 'transparent',
+    },
+    itemInfo: {
+        flex: 1,
+        gap: 4,
+    },
+    itemName: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: SmartHomeColors.textSecondary,
+    },
+    timeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    itemTime: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: SmartHomeColors.textPrimary,
+    },
+    timeDivider: {
+        width: 10,
+        height: 2,
+        backgroundColor: SmartHomeColors.textMuted,
+        borderRadius: 1,
+        opacity: 0.3,
+    },
+    statusTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 8,
+        gap: 5,
+    },
+    statusTagActive: {
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    },
+    statusTagInactive: {
+        backgroundColor: '#F1F5F9',
+    },
+    statusTagDot: {
+        width: 5,
+        height: 5,
+        borderRadius: 2.5,
+    },
+    statusTagText: {
+        fontSize: 9,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    itemActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    deleteBtn: {
+        padding: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    addForm: {
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: SmartHomeColors.divider,
+    },
+    addHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    addTitle: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: SmartHomeColors.textSecondary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    cancelLink: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#EF4444',
+    },
+    inputGroup: {
+        marginBottom: 16,
+    },
+    fieldLabelSmall: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: SmartHomeColors.textMuted,
+        marginBottom: 6,
+        textTransform: 'uppercase',
+    },
+    nameInput: {
+        backgroundColor: '#F8F9FF',
+        borderRadius: 12,
+        paddingHorizontal: 15,
+        height: 46,
+        fontSize: 14,
+        color: SmartHomeColors.textPrimary,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    inputRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 16,
+    },
+    fieldLabelRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: 12,
+        marginBottom: 8,
+    },
+    fieldLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: SmartHomeColors.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        width: '48%', // Balanced with the buttons below
+        textAlign: 'center',
+    },
+    timePickerBtn: {
+        flex: 1,
+        backgroundColor: '#F8F9FF',
+        borderRadius: 12,
+        padding: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    timePickerText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: SmartHomeColors.textPrimary,
+    },
+    addBtnFull: {
+        height: 50,
+        borderRadius: 14,
+        backgroundColor: SmartHomeColors.purple,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: SmartHomeColors.purple,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+        gap: 8,
+    },
+    saveBtnEdit: {
+        backgroundColor: '#10B981',
+        shadowColor: '#10B981',
+    },
+    addBtnText: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#FFF',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+});
