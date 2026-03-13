@@ -7,8 +7,19 @@
 // --- Configuration ---
 const char *ssid = "YOUR_WIFI_SSID";
 const char *password = "YOUR_WIFI_PASSWORD";
+
+// MQTT Configuration
 const char *mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
+const char *base_topic = "anomali/device"; // Base topic for all devices
+
+// Relay Pins Definition
+#define RELAY_PIN_1 16
+#define RELAY_PIN_2 17
+#define RELAY_PIN_3 18
+#define RELAY_PIN_4 19
+#define RELAY_PIN_5 21
+#define RELAY_PIN_6 22
 
 // Relay Logic (Active High)
 #define RELAY_ON HIGH
@@ -23,35 +34,25 @@ const int daylightOffset_sec = 0;
 struct Device {
   const char *id;
   int pin;
-  const char *topic_set;
-  const char *topic_state;
-  const char *topic_schedule;
-  const char *topic_mode_set;
-  const char *topic_mode_state;
+  String topic_set;
+  String topic_state;
+  String topic_schedule;
+  String topic_mode_set;
+  String topic_mode_state;
 };
 
-Device devices[] = {{"1", 16, "anomali/device/1/set", "anomali/device/1/state",
-                     "anomali/device/1/schedule", "anomali/device/1/mode/set",
-                     "anomali/device/1/mode/state"},
-                    {"2", 17, "anomali/device/2/set", "anomali/device/2/state",
-                     "anomali/device/2/schedule", "anomali/device/2/mode/set",
-                     "anomali/device/2/mode/state"},
-                    {"3", 18, "anomali/device/3/set", "anomali/device/3/state",
-                     "anomali/device/3/schedule", "anomali/device/3/mode/set",
-                     "anomali/device/3/mode/state"},
-                    {"4", 19, "anomali/device/4/set", "anomali/device/4/state",
-                     "anomali/device/4/schedule", "anomali/device/4/mode/set",
-                     "anomali/device/4/mode/state"},
-                    {"5", 21, "anomali/device/5/set", "anomali/device/5/state",
-                     "anomali/device/5/schedule", "anomali/device/5/mode/set",
-                     "anomali/device/5/mode/state"},
-                    {"6", 22, "anomali/device/6/set", "anomali/device/6/state",
-                     "anomali/device/6/schedule", "anomali/device/6/mode/set",
-                     "anomali/device/6/mode/state"}};
+Device devices[] = {{"1", RELAY_PIN_1, "", "", "", "", ""},
+                    {"2", RELAY_PIN_2, "", "", "", "", ""},
+                    {"3", RELAY_PIN_3, "", "", "", "", ""},
+                    {"4", RELAY_PIN_4, "", "", "", "", ""},
+                    {"5", RELAY_PIN_5, "", "", "", "", ""},
+                    {"6", RELAY_PIN_6, "", "", "", "", ""}};
 
 const int NUM_DEVICES = sizeof(devices) / sizeof(Device);
-const char *availabilityTopic = "anomali/device/availability";
-const char *getTopic = "anomali/device/get";
+
+// Dynamic Shared Topics
+String availabilityTopic;
+String getTopic;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -104,7 +105,8 @@ void callback(char *topic, byte *payload, unsigned int length) {
     if (String(topic) == devices[i].topic_set) {
       bool newState = (message == "ON");
       digitalWrite(devices[i].pin, newState ? RELAY_ON : RELAY_OFF);
-      client.publish(devices[i].topic_state, newState ? "ON" : "OFF", true);
+      client.publish(devices[i].topic_state.c_str(), newState ? "ON" : "OFF",
+                     true);
       break;
     } else if (String(topic) == devices[i].topic_schedule) {
       saveSchedules(i, message);
@@ -112,16 +114,18 @@ void callback(char *topic, byte *payload, unsigned int length) {
     } else if (String(topic) == devices[i].topic_mode_set) {
       if (message == "auto" || message == "manual") {
         saveMode(i, message);
-        client.publish(devices[i].topic_mode_state, message.c_str(), true);
+        client.publish(devices[i].topic_mode_state.c_str(), message.c_str(),
+                       true);
       }
       break;
     } else if (String(topic) == getTopic) {
       // Sync all device states
       for (int j = 0; j < NUM_DEVICES; j++) {
-        client.publish(devices[j].topic_state,
+        client.publish(devices[j].topic_state.c_str(),
                        (digitalRead(devices[j].pin) == RELAY_ON) ? "ON" : "OFF",
                        true);
-        client.publish(devices[j].topic_mode_state, loadMode(j).c_str(), true);
+        client.publish(devices[j].topic_mode_state.c_str(), loadMode(j).c_str(),
+                       true);
       }
       break;
     }
@@ -130,21 +134,23 @@ void callback(char *topic, byte *payload, unsigned int length) {
 
 boolean reconnect() {
   String clientId = "Anomali-MCU-" + String(random(0xffff), HEX);
-  if (client.connect(clientId.c_str(), availabilityTopic, 0, true, "offline")) {
-    client.publish(availabilityTopic, "online", true);
+  if (client.connect(clientId.c_str(), availabilityTopic.c_str(), 0, true,
+                     "offline")) {
+    client.publish(availabilityTopic.c_str(), "online", true);
     for (int i = 0; i < NUM_DEVICES; i++) {
-      client.subscribe(devices[i].topic_set);
-      client.subscribe(devices[i].topic_schedule);
-      client.subscribe(devices[i].topic_mode_set);
+      client.subscribe(devices[i].topic_set.c_str());
+      client.subscribe(devices[i].topic_schedule.c_str());
+      client.subscribe(devices[i].topic_mode_set.c_str());
     }
-    client.subscribe(getTopic);
+    client.subscribe(getTopic.c_str());
 
     // Sync current state back to app on initial connection
     for (int i = 0; i < NUM_DEVICES; i++) {
-      client.publish(devices[i].topic_state,
+      client.publish(devices[i].topic_state.c_str(),
                      (digitalRead(devices[i].pin) == RELAY_ON) ? "ON" : "OFF",
                      true);
-      client.publish(devices[i].topic_mode_state, loadMode(i).c_str(), true);
+      client.publish(devices[i].topic_mode_state.c_str(), loadMode(i).c_str(),
+                     true);
     }
     return true;
   }
@@ -181,10 +187,10 @@ void checkSchedules() {
 
       if (strcmp(currentTime, s["startTime"]) == 0) {
         digitalWrite(devices[i].pin, RELAY_ON);
-        client.publish(devices[i].topic_state, "ON", true);
+        client.publish(devices[i].topic_state.c_str(), "ON", true);
       } else if (strcmp(currentTime, s["endTime"]) == 0) {
         digitalWrite(devices[i].pin, RELAY_OFF);
-        client.publish(devices[i].topic_state, "OFF", true);
+        client.publish(devices[i].topic_state.c_str(), "OFF", true);
       }
     }
   }
@@ -193,7 +199,18 @@ void checkSchedules() {
 void setup() {
   Serial.begin(115200);
 
+  // Initialize topics dynamically
+  availabilityTopic = String(base_topic) + "/availability";
+  getTopic = String(base_topic) + "/get";
+
   for (int i = 0; i < NUM_DEVICES; i++) {
+    String deviceBase = String(base_topic) + "/" + String(devices[i].id);
+    devices[i].topic_set = deviceBase + "/set";
+    devices[i].topic_state = deviceBase + "/state";
+    devices[i].topic_schedule = deviceBase + "/schedule";
+    devices[i].topic_mode_set = deviceBase + "/mode/set";
+    devices[i].topic_mode_state = deviceBase + "/mode/state";
+
     pinMode(devices[i].pin, OUTPUT);
     digitalWrite(devices[i].pin, RELAY_OFF);
   }
