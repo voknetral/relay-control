@@ -36,6 +36,7 @@ interface DeviceCardProps {
     onLongPress?: () => void;
     customIconUri?: string;
     isMcuOnline?: boolean;
+    isVerifying?: boolean;
 }
 
 function AnimatedToggle({
@@ -111,6 +112,7 @@ export function DeviceCard({
     onLongPress,
     customIconUri,
     isMcuOnline,
+    isVerifying,
 }: DeviceCardProps) {
     const baseIconName = ICON_MAP[iconType] ?? 'flash';
     const iconName = isOn ? baseIconName : `${baseIconName}-outline`;
@@ -185,13 +187,21 @@ export function DeviceCard({
             <View style={styles.statusIndicator}>
                 <View style={[
                   styles.statusDot, 
-                  { backgroundColor: !isOnline ? '#EF4444' : (isOn ? accentColor : '#E5E7EB') }
+                  { 
+                    backgroundColor: isVerifying 
+                      ? '#94A3B8' 
+                      : (!isOnline ? '#EF4444' : (isOn ? accentColor : '#E5E7EB')) 
+                  }
                 ]} />
                 <Text style={[
                   styles.statusLabel, 
-                  { color: !isOnline ? '#EF4444' : (isOn ? accentColor : SmartHomeColors.textMuted) }
+                  { 
+                    color: isVerifying 
+                      ? '#94A3B8' 
+                      : (!isOnline ? '#EF4444' : (isOn ? accentColor : SmartHomeColors.textMuted)) 
+                  }
                 ]}>
-                    {!isOnline ? 'OFFLINE' : (isOn ? TXT.common.on : TXT.common.off)}
+                    {isVerifying ? 'VERIFYING...' : (!isOnline ? 'OFFLINE' : (isOn ? TXT.common.on : TXT.common.off))}
                 </Text>
             </View>
 

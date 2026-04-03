@@ -14,10 +14,10 @@ const int mqtt_port = 1883;
 const char *base_topic = "anomali/device"; // Base topic for all devices
 
 // Relay Pins Definition
-#define RELAY_PIN_1 16
-#define RELAY_PIN_2 17
-#define RELAY_PIN_3 18
-#define RELAY_PIN_4 19
+#define RELAY_PIN_1 12
+#define RELAY_PIN_2 14
+#define RELAY_PIN_3 27
+#define RELAY_PIN_4 26
 
 // Relay Logic (Active High)
 #define RELAY_ON HIGH
@@ -37,6 +37,7 @@ struct Device {
   String topic_schedule;
   String topic_mode_set;
   String topic_mode_state;
+  String topic_availability;
 };
 
 Device devices[] = {{"1", RELAY_PIN_1, "", "", "", "", ""},
@@ -122,9 +123,26 @@ void callback(char *topic, byte *payload, unsigned int length) {
                        true);
         client.publish(devices[j].topic_mode_state.c_str(), loadMode(j).c_str(),
                        true);
+        client.publish(devices[j].topic_availability.c_str(), "online", true);
       }
       break;
     }
+  }
+}
+
+bool isTimeInRange(const char* startStr, const char* endStr, int currentMins) {
+  int startH, startM, endH, endM;
+  if (sscanf(startStr, "%d:%d", &startH, &startM) != 2) return false;
+  if (sscanf(endStr, "%d:%d", &endH, &endM) != 2) return false;
+
+  int startMins = startH * 60 + startM;
+  int endMins = endH * 60 + endM;
+
+  if (startMins < endMins) {
+    return (currentMins >= startMins && currentMins < endMins);
+  } else {
+    // Crosses midnight
+    return (currentMins >= startMins || currentMins < endMins);
   }
 }
 
@@ -137,6 +155,7 @@ boolean reconnect() {
       client.subscribe(devices[i].topic_set.c_str());
       client.subscribe(devices[i].topic_schedule.c_str());
       client.subscribe(devices[i].topic_mode_set.c_str());
+      client.subscribe(devices[i].topic_availability.c_str());
     }
     client.subscribe(getTopic.c_str());
 
@@ -147,6 +166,7 @@ boolean reconnect() {
                      true);
       client.publish(devices[i].topic_mode_state.c_str(), loadMode(i).c_str(),
                      true);
+      client.publish(devices[i].topic_availability.c_str(), "online", true);
     }
     return true;
   }
@@ -163,10 +183,7 @@ void checkSchedules() {
     return;
   last_minute_triggered = timeinfo.tm_min;
 
-  char currentTime[6];
-  sprintf(currentTime, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-  Serial.print("Checking schedules for: ");
-  Serial.println(currentTime);
+  int currentMins = timeinfo.tm_hour * 60 + timeinfo.tm_min;
 
   for (int i = 0; i < NUM_DEVICES; i++) {
     if (loadMode(i) != "auto")
@@ -177,6 +194,7 @@ void checkSchedules() {
     if (deserializeJson(doc, json))
       continue;
 
+    bool shouldBeOn = false;
     for (JsonObject s : doc.as<JsonArray>()) {
       if (!s["isEnabled"])
         continue;
@@ -184,13 +202,18 @@ void checkSchedules() {
       const char* startTime = s["startTime"].as<const char*>();
       const char* endTime = s["endTime"].as<const char*>();
 
-      if (startTime && strcmp(currentTime, startTime) == 0) {
-        digitalWrite(devices[i].pin, RELAY_ON);
-        client.publish(devices[i].topic_state.c_str(), "ON", true);
-      } else if (endTime && strcmp(currentTime, endTime) == 0) {
-        digitalWrite(devices[i].pin, RELAY_OFF);
-        client.publish(devices[i].topic_state.c_str(), "OFF", true);
+      if (startTime && endTime && isTimeInRange(startTime, endTime, currentMins)) {
+        shouldBeOn = true;
+        break;
       }
+    }
+
+    // Only update if state changes to reduce wear and MQTT traffic
+    bool currentState = (digitalRead(devices[i].pin) == RELAY_ON);
+    if (currentState != shouldBeOn) {
+      digitalWrite(devices[i].pin, shouldBeOn ? RELAY_ON : RELAY_OFF);
+      client.publish(devices[i].topic_state.c_str(), shouldBeOn ? "ON" : "OFF", true);
+      Serial.printf("Device %s switched %s by schedule\n", devices[i].id, shouldBeOn ? "ON" : "OFF");
     }
   }
 }
@@ -209,6 +232,7 @@ void setup() {
     devices[i].topic_schedule = deviceBase + "/schedule";
     devices[i].topic_mode_set = deviceBase + "/mode/set";
     devices[i].topic_mode_state = deviceBase + "/mode/state";
+    devices[i].topic_availability = deviceBase + "/availability";
 
     pinMode(devices[i].pin, OUTPUT);
     digitalWrite(devices[i].pin, RELAY_OFF);

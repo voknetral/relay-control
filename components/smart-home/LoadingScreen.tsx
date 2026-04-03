@@ -1,56 +1,43 @@
 import { SmartHomeColors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View, Image } from 'react-native';
 
 export function LoadingScreen() {
-    const pulseAnim = useRef(new Animated.Value(1)).current;
-    const rotateAnim = useRef(new Animated.Value(0)).current;
+    const loaderAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        // Pulse animation
+        // Continuous loading bar animation
         Animated.loop(
-            Animated.sequence([
-                Animated.timing(pulseAnim, {
-                    toValue: 1.2,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(pulseAnim, {
-                    toValue: 1,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-            ])
-        ).start();
-
-        // Subtle rotation for background or elements if needed
-        Animated.loop(
-            Animated.timing(rotateAnim, {
+            Animated.timing(loaderAnim, {
                 toValue: 1,
-                duration: 4000,
-                useNativeDriver: true,
+                duration: 2000,
+                useNativeDriver: false, // Cannot use native driver for width %
             })
         ).start();
-    }, [pulseAnim, rotateAnim]);
+    }, [loaderAnim]);
 
-    const spin = rotateAnim.interpolate({
+    const barWidth = loaderAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: ['0deg', '360deg'],
+        outputRange: ['0%', '100%'],
     });
 
     return (
         <View style={styles.container}>
             <View style={styles.center}>
-                <Animated.View style={[styles.iconContainer, { transform: [{ scale: pulseAnim }] }]}>
-                    <Ionicons name="sparkles" size={50} color="#FFF" />
-                </Animated.View>
+                <View style={styles.iconWrapper}>
+                    <Image 
+                        source={require('../../assets/images/smarthouse.png')} 
+                        style={styles.logo}
+                        resizeMode="contain"
+                    />
+                </View>
 
                 <Text style={styles.title}>Anomali</Text>
                 <Text style={styles.subtitle}>Smart Home Intelligence</Text>
 
                 <View style={styles.loaderContainer}>
-                    <Animated.View style={[styles.spinner, { transform: [{ rotate: spin }] }]} />
+                    <Animated.View style={[styles.loaderBar, { width: barWidth }]} />
                 </View>
             </View>
 
@@ -64,66 +51,60 @@ export function LoadingScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F8F9FF',
+        backgroundColor: '#F8FAFC', 
         justifyContent: 'center',
         alignItems: 'center',
     },
     center: {
         alignItems: 'center',
     },
-    iconContainer: {
-        width: 100,
-        height: 100,
-        borderRadius: 30,
-        backgroundColor: SmartHomeColors.purple,
+    iconWrapper: {
+        width: 130,
+        height: 130,
         justifyContent: 'center',
         alignItems: 'center',
-        boxShadow: '0 10px 20px rgba(139, 92, 246, 0.3)',
-        elevation: 10,
-        marginBottom: 24,
+        marginBottom: 16,
+    },
+    logo: {
+        width: '100%',
+        height: '100%',
     },
     title: {
-        fontSize: 32,
+        fontSize: 34,
         fontWeight: '900',
-        color: SmartHomeColors.textPrimary,
+        color: '#0F172A',
         letterSpacing: -1,
     },
     subtitle: {
         fontSize: 14,
         fontWeight: '600',
-        color: SmartHomeColors.textSecondary,
-        opacity: 0.7,
+        color: '#64748B',
         marginTop: 4,
+        textTransform: 'uppercase',
+        letterSpacing: 2,
     },
     loaderContainer: {
-        marginTop: 40,
+        marginTop: 48,
         height: 4,
-        width: 120,
+        width: 140,
         backgroundColor: '#E2E8F0',
         borderRadius: 2,
         overflow: 'hidden',
-        justifyContent: 'center',
-        alignItems: 'center',
     },
-    spinner: {
-        width: 40,
-        height: 40,
-        borderWidth: 3,
-        borderColor: SmartHomeColors.purple,
-        borderTopColor: 'transparent',
-        borderRadius: 20,
-        position: 'absolute',
-        top: -18,
+    loaderBar: {
+        height: '100%',
+        backgroundColor: SmartHomeColors.purple,
+        borderRadius: 2,
     },
     footer: {
         position: 'absolute',
         bottom: 50,
     },
     footerText: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: SmartHomeColors.textMuted,
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#94A3B8',
         textTransform: 'uppercase',
-        letterSpacing: 1,
+        letterSpacing: 1.5,
     },
 });

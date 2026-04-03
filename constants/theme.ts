@@ -29,35 +29,35 @@ export const Colors = {
 
 export const SmartHomeColors = {
   // Background
-  bgStart: '#EEE8FF',
-  bgEnd:   '#E4EFFF',
+  bgStart: '#F8FAFC',
+  bgEnd:   '#F1F5F9',
 
   // Card
   cardBg: '#FFFFFF',
-  cardShadow: 'rgba(140,120,200,0.10)',
+  cardShadow: 'rgba(148, 163, 184, 0.08)',
 
-  // Energy card gradient
+  // Energy card gradient (maintained purple)
   energyStart: '#A855F7',
   energyEnd:   '#7C3AED',
 
   // Device icon colours
-  teal:   '#14C5B2',
-  orange: '#F97316',
+  teal:   '#10B981',
+  orange: '#F59E0B',
   blue:   '#3B82F6',
 
   // Toggle
   toggleOn:  '#8B5CF6',
-  toggleOff: '#D1D5DB',
+  toggleOff: '#E2E8F0',
   toggleKnob:'#FFFFFF',
 
   // Text
-  textPrimary:   '#1A1A2E',
-  textSecondary: '#6B7280',
-  textMuted:     '#9CA3AF',
+  textPrimary:   '#0F172A',
+  textSecondary: '#475569',
+  textMuted:     '#94A3B8',
   textWhite:     '#FFFFFF',
 
   // Misc
-  divider: '#E5E7EB',
+  divider: '#F1F5F9',
   purple:  '#8B5CF6',
 };
 

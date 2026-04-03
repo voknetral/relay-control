@@ -1,7 +1,7 @@
 import { APP_DEFAULTS } from '@/constants/Config';
 import { SmartHomeColors } from '@/constants/theme';
 import { TXT } from '@/constants/translations';
-import { useMqtt } from '@/hooks/use-mqtt';
+import { useMqttContext } from '@/contexts/MqttContext';
 import { AppConfig, Storage } from '@/utils/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
@@ -19,6 +19,9 @@ import {
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as Battery from 'expo-battery';
+import * as Application from 'expo-application';
 
 export default function SettingsScreen() {
     const insets = useSafeAreaInsets();
@@ -34,7 +37,6 @@ export default function SettingsScreen() {
     const [activePort, setActivePort] = useState('');
 
     const [isResultModalVisible, setIsResultModalVisible] = useState(false);
-    const [mcuResultOnline, setMcuResultOnline] = useState(false);
 
     // General Status Modal States (Confirm/Success)
     const [statusModal, setStatusModal] = useState({
@@ -45,7 +47,7 @@ export default function SettingsScreen() {
         onConfirm: () => { },
     });
 
-    const { connected: mqttConnected, subscribe, onMessage } = useMqtt(activeHost, activePort, 'anomali-tester');
+    const { connected: mqttConnected, subscribe, onMessage, reconnect, mcuOnline } = useMqttContext();
 
     // Effect for auto-subscribing when checking and connection succeeds
     useEffect(() => {
@@ -55,15 +57,9 @@ export default function SettingsScreen() {
         }
     }, [isChecking, mqttConnected, mqttTopic]);
 
-    // Handle incoming messages for diagnostics
+    // MCUDiagnostics: Handled by Context now
     useEffect(() => {
-        const checkTopic = `${mqttTopic}/availability`;
-        const unsubscribe = onMessage((topic, message) => {
-            if (topic === checkTopic) {
-                setMcuResultOnline(message.toString() === 'online');
-            }
-        });
-        return unsubscribe;
+        // We no longer need local listeners for availability
     }, [mqttTopic, onMessage]);
 
     useEffect(() => {
@@ -75,10 +71,6 @@ export default function SettingsScreen() {
                 setMqttTopic(savedConfig.mqttTopic!);
                 setMqttHost(savedConfig.mqttHost!);
                 setMqttPort(savedConfig.mqttPort!);
-
-                // Set initial connection target
-                setActiveHost(savedConfig.mqttHost!);
-                setActivePort(savedConfig.mqttPort!);
             }
         };
         loadConfig();
@@ -104,11 +96,10 @@ export default function SettingsScreen() {
         // ke topik yang sama, jadi pesan 'online' tidak akan dikirim kedua kalinya.
 
         // Update connection target to whatever is currently typed
-        setActiveHost(mqttHost);
-        setActivePort(mqttPort);
+        reconnect(mqttHost, mqttPort);
 
         setIsChecking(true);
-
+ 
         // Wait a bit to show result
         setTimeout(() => {
             setIsChecking(false);
@@ -126,6 +117,10 @@ export default function SettingsScreen() {
             mqttPort: mqttPort.trim() || APP_DEFAULTS.mqttPort
         };
         await Storage.saveConfig(newConfig);
+        
+        // Trigger global reconnection with new settings including topic
+        reconnect(newConfig.mqttHost, newConfig.mqttPort, newConfig.mqttTopic);
+        
         router.back();
     };
 
@@ -176,6 +171,37 @@ export default function SettingsScreen() {
             type: 'danger',
             onConfirm: performAppReset
         });
+    };
+
+    const [isBatteryExempt, setIsBatteryExempt] = useState(true);
+
+    const checkBatteryStatus = async () => {
+        if (Platform.OS === 'android') {
+            const isOptimized = await Battery.isBatteryOptimizationEnabledAsync();
+            setIsBatteryExempt(!isOptimized);
+        }
+    };
+
+    useEffect(() => {
+        checkBatteryStatus();
+        const interval = setInterval(checkBatteryStatus, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleBatteryExemption = async () => {
+        if (Platform.OS !== 'android') return;
+
+        const pkg = Application.applicationId;
+        if (!pkg) return;
+
+        try {
+            await IntentLauncher.startActivityAsync('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', {
+                data: `package:${pkg}`,
+            });
+        } catch (err) {
+            // Fallback to general settings if specific intent fails
+            IntentLauncher.startActivityAsync('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS');
+        }
     };
 
     const performAppReset = async () => {
@@ -280,7 +306,6 @@ export default function SettingsScreen() {
                                     keyboardType="number-pad"
                                 />
                             </View>
-
                             <TouchableOpacity
                                 onPress={handleCheckConnection}
                                 disabled={isChecking}
@@ -292,6 +317,45 @@ export default function SettingsScreen() {
                                 </Text>
                             </TouchableOpacity>
                         </View>
+
+                        {/* Battery Optimization Section (Android Only) */}
+                        {Platform.OS === 'android' && (
+                            <View style={[styles.section, styles.borderTop]}>
+                                <Text style={styles.sectionTitle}>Optimasi Baterai</Text>
+                                <View style={styles.batteryCard}>
+                                    <View style={styles.batteryInfo}>
+                                        <Ionicons 
+                                            name={isBatteryExempt ? "battery-full" : "battery-dead"} 
+                                            size={24} 
+                                            color={isBatteryExempt ? "#10B981" : "#F59E0B"} 
+                                        />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.batteryTitle}>
+                                                {isBatteryExempt ? "Optimasi Dinonaktifkan" : "Optimasi Aktif"}
+                                            </Text>
+                                            <Text style={styles.batteryDesc}>
+                                                {isBatteryExempt 
+                                                    ? "Aplikasi dapat berjalan lancar di latar belakang." 
+                                                    : "HP Anda mungkin mematikan aplikasi saat di latar belakang."}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    
+                                    {!isBatteryExempt && (
+                                        <TouchableOpacity 
+                                            style={styles.batteryBtn} 
+                                            onPress={handleBatteryExemption}
+                                        >
+                                            <Text style={styles.batteryBtnText}>Matikan Optimasi</Text>
+                                            <Ionicons name="open-outline" size={16} color="#FFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                                <Text style={styles.hint}>
+                                    Penting agar notifikasi jadwal tetap muncul tepat waktu.
+                                </Text>
+                            </View>
+                        )}
 
                         {/* Danger Zone */}
                         <View style={[styles.section, styles.borderTop, { marginBottom: 20 }]}>
@@ -335,25 +399,25 @@ export default function SettingsScreen() {
                                         />
                                     </View>
                                     <View style={styles.statusInfo}>
-                                        <Text style={styles.statusLabel}>{TXT.settings.mqttStatus}</Text>
+                                        <Text style={styles.statusLabel}>MQTT Broker</Text>
                                         <Text style={[styles.statusValue, mqttConnected ? styles.textOnline : styles.textOffline]}>
                                             {mqttConnected ? TXT.settings.online : TXT.settings.offline}
                                         </Text>
                                     </View>
                                 </View>
-
+                                
                                 <View style={styles.statusRow}>
-                                    <View style={[styles.statusIcon, (mqttConnected && mcuResultOnline) ? styles.statusIconOnline : styles.statusIconOffline]}>
+                                    <View style={[styles.statusIcon, (mqttConnected && mcuOnline) ? styles.statusIconOnline : styles.statusIconOffline]}>
                                         <Ionicons
-                                            name={(mqttConnected && mcuResultOnline) ? "checkmark-circle" : "close-circle"}
+                                            name={(mqttConnected && mcuOnline) ? "checkmark-circle" : "close-circle"}
                                             size={22}
-                                            color={(mqttConnected && mcuResultOnline) ? "#10B981" : "#EF4444"}
+                                            color={(mqttConnected && mcuOnline) ? "#10B981" : "#EF4444"}
                                         />
                                     </View>
                                     <View style={styles.statusInfo}>
-                                        <Text style={styles.statusLabel}>{TXT.settings.mcuStatus}</Text>
-                                        <Text style={[styles.statusValue, (mqttConnected && mcuResultOnline) ? styles.textOnline : styles.textOffline]}>
-                                            {(mqttConnected && mcuResultOnline) ? TXT.settings.online : TXT.settings.offline}
+                                        <Text style={styles.statusLabel}>MCU Status</Text>
+                                        <Text style={[styles.statusValue, (mqttConnected && mcuOnline) ? styles.textOnline : styles.textOffline]}>
+                                            {(mqttConnected && mcuOnline) ? TXT.settings.online : TXT.settings.offline}
                                         </Text>
                                     </View>
                                 </View>
@@ -723,5 +787,53 @@ const styles = StyleSheet.create({
         color: SmartHomeColors.textSecondary,
         fontSize: 14,
         fontWeight: '800',
+    },
+    batteryCard: {
+        backgroundColor: '#F8FAFC',
+        padding: 16,
+        borderRadius: 20,
+        gap: 16,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    batteryInfo: {
+        flexDirection: 'row',
+        gap: 14,
+        alignItems: 'center',
+    },
+    batteryTitle: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: SmartHomeColors.textPrimary,
+        marginBottom: 2,
+    },
+    batteryDesc: {
+        fontSize: 13,
+        color: SmartHomeColors.textMuted,
+        lineHeight: 18,
+    },
+    batteryBtn: {
+        backgroundColor: SmartHomeColors.purple,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        height: 48,
+        borderRadius: 12,
+    },
+    batteryBtnText: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: '800',
+    },
+    resultTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: SmartHomeColors.textPrimary,
+    },
+    resultSub: {
+        fontSize: 13,
+        color: SmartHomeColors.textSecondary,
+        marginTop: 2,
     },
 });

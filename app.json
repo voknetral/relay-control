@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "MyRoom",
+    "name": "Anomali",
     "slug": "Anomali",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/smarthouse.png",
     "scheme": "anomali",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,12 +13,15 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#1A1A2E",
-        "foregroundImage": "./assets/images/icon.png"
+        "backgroundColor": "#F8FAFC",
+        "foregroundImage": "./assets/images/smarthouse.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.zeninkite.Anomali"
+      "package": "com.zeninkite.Anomali",
+      "permissions": [
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+      ]
     },
     "web": {
       "output": "static",
@@ -36,12 +39,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/images/smarthouse.png",
+          "imageWidth": 250,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#F8FAFC",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#F8FAFC"
           }
         }
       ],
