@@ -40,6 +40,16 @@ Device devices[] = {
 };
 ```
 
+## Ubah Base Topic
+
+Jangan lupa ubah base topic dengan unik dikarenakan broker yang dipakai adalah broker publik jadinya bisa saja ada orang yang pakai topic yang sama nanti bentrok
+
+```cpp id="b0u6jk"
+const char *base_topic = "voknetral/device"; // buat yang unik misal "apacoba/siapasangka/asep"
+```
+
+ubah juga base topic yang ada diaplikasi agar sinkron dengan ESP32nya.
+
 ---
 
 ## Cara Kerja
