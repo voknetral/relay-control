@@ -30,6 +30,16 @@ const char *ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 7 * 3600; // WIB (UTC+7)
 const int daylightOffset_sec = 0;
 
+// Generate a consistent device ID based on MAC address
+String getDeviceId() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X%02X%02X%02X%02X%02X", 
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return "Voknetral-ESP32-" + String(macStr);
+}
+
 // Device Definitions
 struct Device {
   const char *id;
@@ -64,10 +74,31 @@ int last_minute_triggered = -1;
 unsigned long last_reconnect_attempt = 0;
 unsigned long last_manual_command_ms[NUM_DEVICES] = {0};
 const unsigned long COMMAND_DEBOUNCE_MS = 500;
+const unsigned long RECONNECT_DEBOUNCE_MS = 1000; // Reduced from 5000ms for faster reconnection
+unsigned long last_connection_check = 0;
+const unsigned long CONNECTION_CHECK_INTERVAL_MS = 3000;
 
 void setup_wifi() {
   Serial.println("\nConnecting to WiFi...");
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected!");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nFailed to connect to WiFi, will retry in loop");
+  }
 }
 
 void savePreferenceValue(const String &key, const String &value) {
@@ -183,10 +214,19 @@ bool isTimeInRange(const char* startStr, const char* endStr, int currentMins) {
 }
 
 boolean reconnect() {
-  String clientId = "Voknetral-MCU-" + String(random(0xffff), HEX);
-  if (client.connect(clientId.c_str(), availabilityTopic.c_str(), 0, true,
-                     "offline")) {
+  if (client.connected()) {
+    return true; // Already connected
+  }
+
+  String clientId = getDeviceId();
+  Serial.print("Connecting with clientId: ");
+  Serial.println(clientId);
+
+  if (client.connect(clientId.c_str(), availabilityTopic.c_str(), 0, true, "offline")) {
+    Serial.println("MQTT Connected!");
     client.publish(availabilityTopic.c_str(), "online", true);
+    
+    // Subscribe to all topics
     for (int i = 0; i < NUM_DEVICES; i++) {
       client.subscribe(devices[i].topic_set.c_str());
       client.subscribe(devices[i].topic_schedule.c_str());
@@ -205,7 +245,25 @@ boolean reconnect() {
                      true);
       client.publish(devices[i].topic_availability.c_str(), "online", true);
     }
+    
+    Serial.println("Successfully subscribed to all topics and published initial states");
     return true;
+  } else {
+    int state = client.state();
+    Serial.print("MQTT connect failed, code: ");
+    Serial.println(state);
+    switch (state) {
+      case -4: Serial.println("MQTT_CONNECTION_TIMEOUT"); break;
+      case -3: Serial.println("MQTT_CONNECTION_LOST"); break;
+      case -2: Serial.println("MQTT_CONNECT_FAILED"); break;
+      case -1: Serial.println("MQTT_DISCONNECTED"); break;
+      case 1: Serial.println("MQTT_CONNECT_BAD_PROTOCOL"); break;
+      case 2: Serial.println("MQTT_CONNECT_BAD_CLIENT_ID"); break;
+      case 3: Serial.println("MQTT_CONNECT_UNAVAILABLE"); break;
+      case 4: Serial.println("MQTT_CONNECT_BAD_CREDENTIALS"); break;
+      case 5: Serial.println("MQTT_CONNECT_UNAUTHORIZED"); break;
+      default: Serial.println("Unknown error");
+    }
   }
   return false;
 }
@@ -257,6 +315,10 @@ void checkSchedules() {
 
 void setup() {
   Serial.begin(115200);
+  
+  Serial.println("\n\n=== ESP32 Relay Control Starting ===");
+  Serial.print("Device ID: ");
+  Serial.println(getDeviceId());
 
   // Initialize topics dynamically
   availabilityTopic = String(base_topic) + "/availability";
@@ -284,14 +346,17 @@ void setup() {
 
   // Init NTP
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  
+  Serial.println("Setup complete, waiting for WiFi connection...");
 }
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (!client.connected()) {
       unsigned long now = millis();
-      if (now - last_reconnect_attempt > 5000) {
+      if (now - last_reconnect_attempt > RECONNECT_DEBOUNCE_MS) {
         last_reconnect_attempt = now;
+        Serial.println("Attempting to reconnect to MQTT...");
         if (reconnect()) {
           last_reconnect_attempt = 0;
         }
@@ -304,6 +369,7 @@ void loop() {
     static unsigned long last_wifi_ms = 0;
     if (millis() - last_wifi_ms > 10000) {
       last_wifi_ms = millis();
+      Serial.println("WiFi lost - attempting to reconnect...");
       WiFi.begin(ssid, password);
     }
   }
@@ -313,5 +379,16 @@ void loop() {
   if (millis() - last_sch_ms > 2000) {
     last_sch_ms = millis();
     checkSchedules();
+  }
+
+  // Periodic connection status check
+  unsigned long now = millis();
+  if (now - last_connection_check > CONNECTION_CHECK_INTERVAL_MS) {
+    last_connection_check = now;
+    if (!client.connected()) {
+      Serial.print("Connection lost. WiFi: ");
+      Serial.print(WiFi.status() == WL_CONNECTED ? "OK" : "DISCONNECTED");
+      Serial.println();
+    }
   }
 }
