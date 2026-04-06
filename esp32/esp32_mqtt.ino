@@ -4,23 +4,23 @@
 #include <WiFi.h>
 #include <time.h>
 
-// --- Configuration ---
-const char *ssid = "TEKNOLAB Office";
-const char *password = "selamatdatang";
+// Konfigurasi Koneksi Internet
+const char *ssid = ""; // Ubah pakai ssid yang akan digunakan
+const char *password = ""; // Sama aja di isi misal pake pasword kalo nggak yaudah kosongin
 
-// MQTT Configuration
+// Konfigurasi MQTT
 const char *mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
-const char *base_topic = "voknetral/device"; // Base topic for all devices
-const char *prefs_namespace = "voknetral";
+const char *base_topic = "voknetral/device"; // Ubah yang unik biar nggak bentrok dikarenakan pakai broker publik
+const char *prefs_namespace = "voknetral"; // namespace library preferences boleh diubah
 
-// Relay Pins Definition
+// Define Pin Relay
 #define RELAY_PIN_1 12
 #define RELAY_PIN_2 14
 #define RELAY_PIN_3 27
 #define RELAY_PIN_4 26
 
-// Relay Logic (Active High)
+// Logic Relay (kalau kebalik tinggal dibalik logikanya)
 #define RELAY_ON HIGH
 #define RELAY_OFF LOW
 
